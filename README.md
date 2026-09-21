@@ -42,8 +42,13 @@ scoped to exactly what was needed.
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:ListBucket"],
-      "Resource": "*"
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::jebsonseo-practice-bucket-2026"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::jebsonseo-practice-bucket-2026/*"
     }
   ]
 }
