@@ -1,0 +1,21 @@
+<group name="aws_cloud_security,">
+    <rule id="100200" level="6">
+        <if_sid>80202</if_sid>
+        <field name="aws.eventName">CreateAccessKey</field>
+        <description>AWS Cloud Security: IAM access key created.</description>
+        <mitre>
+            <id>T1098.001</id>
+        </mitre>
+        <group>aws,aws_cloudtrail,cloud_credential_creation,</group>
+    </rule>
+
+    <rule id="100201" level="8">
+        <if_sid>100200</if_sid>
+        <field name="aws.userIdentity.type">^AssumedRole$</field>
+        <description>AWS Cloud Security: Access key created by an assumed-role session.</description>
+        <mitre>
+            <id>T1098.001</id>
+        </mitre>
+        <group>aws,aws_cloudtrail,cloud_credential_creation,assumed_role,</group>
+    </rule>
+</group>
