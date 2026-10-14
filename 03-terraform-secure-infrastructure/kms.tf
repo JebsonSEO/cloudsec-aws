@@ -4,6 +4,10 @@ data "aws_caller_identity" "current" {}
 # Define the KMS key policy.
 data "aws_iam_policy_document" "cloudguard_kms" {
 
+  # Checkov exceptions reviewed for this KMS key policy:
+  # checkov:skip=CKV_AWS_109:KMS key policy uses the account root principal to enable account-level administration; review the allowed actions and principals when changing this policy.
+  # checkov:skip=CKV_AWS_356:Resource "*" is the conventional resource scope in a KMS key policy attached to a specific key; it does not grant access to every KMS key.
+  # checkov:skip=CKV_AWS_111:Key-policy permissions are defined by explicit action lists and principals; CloudWatch Logs access is further restricted by encryption context and ViaService conditions.
   # Allow the AWS account to manage the KMS key through IAM permissions.
   statement {
     sid    = "EnableAccountIAMPermissions"

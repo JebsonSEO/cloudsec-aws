@@ -92,3 +92,64 @@ AWS VPC, EC2, S3, IAM, CloudTrail, CloudWatch
 
 ## Author
 Sheriffdeen, JebsonSEO. Building toward Cloud Security Engineering.
+
+## 4. Terraform: Secure AWS Infrastructure Automation
+
+I extended the project by provisioning and hardening AWS infrastructure with
+Terraform. The goal was to make infrastructure changes reproducible, reviewable,
+and easier to validate against security best practices.
+
+### Infrastructure and security controls
+
+- **Network segmentation:** Separate public and private subnets, with internet
+  routing configured for the public subnet.
+- **Security groups:** No inbound rules on the lab instance's security group;
+  outbound traffic is restricted to HTTPS.
+- **IAM:** An EC2 instance role with the Amazon SSM Managed Instance Core policy,
+  allowing management through AWS Systems Manager Session Manager.
+- **EC2 hardening:** IMDSv2 is required, the root EBS volume is encrypted, and
+  detailed CloudWatch monitoring is enabled.
+- **VPC Flow Logs:** VPC traffic logging is enabled and sent to CloudWatch Logs.
+- **Log encryption:** A customer-managed AWS KMS key encrypts the Flow Logs
+  log group, with automatic key rotation enabled.
+- **Infrastructure as Code:** Terraform manages the infrastructure configuration,
+  while Git tracks reviewed changes.
+
+### Security validation with Checkov
+
+I scanned the Terraform configuration using Checkov 3.3.28.
+
+| Result | Checks |
+|---|---:|
+| Passed | 78 |
+| Failed | 3 |
+| Skipped with documented exceptions | 3 |
+
+The scan identified three findings that remain unresolved:
+
+| Check | Finding | Current decision |
+|---|---|---|
+| CKV_AWS_135 | EC2 EBS optimization | Deferred pending review of instance impact and replacement risk. |
+| CKV_AWS_88 | EC2 instance has a public IP | Deferred until a private management path is planned and verified. |
+| CKV_AWS_338 | CloudWatch log retention is below one year | Seven-day retention retained as a cost-conscious lab decision. |
+
+Three additional findings—CKV_AWS_109, CKV_AWS_356, and CKV_AWS_111—were
+suppressed with documented explanations for the KMS key policy. These are accepted
+scanner exceptions, not passed checks, and the underlying policy must remain under
+review.
+
+### Security trade-offs
+
+This is a learning environment, not a declaration of production readiness.
+The instance still has a public IP, and the log retention period is shorter than
+the one-year period recommended by Checkov. These choices are documented so they
+can be revisited as the architecture and budget evolve.
+
+The next improvements include evaluating private instance management, reviewing
+the remaining Checkov findings, and incorporating security checks into an
+automated infrastructure workflow.
+
+### Tools and Services
+
+Terraform, Checkov, AWS VPC, EC2, IAM, Systems Manager, VPC Flow Logs,
+CloudWatch Logs, AWS KMS, Git, and GitHub.
