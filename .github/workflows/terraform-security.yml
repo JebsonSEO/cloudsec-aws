@@ -46,10 +46,6 @@ jobs:
     name: Checkov Security Scan
     runs-on: ubuntu-latest
 
-    # Learning mode: security findings are reported but do not
-    # fail the overall workflow. Revisit this for production.
-    continue-on-error: true
-
     defaults:
       run:
         working-directory: 03-terraform-secure-infrastructure
@@ -67,4 +63,7 @@ jobs:
         run: python -m pip install checkov==3.3.28
 
       - name: Scan Terraform with Checkov
-        run: checkov -d . --framework terraform --quiet
+        run: |
+          checkov -d . \
+            --framework terraform \
+            --soft-fail-on CKV_AWS_88,CKV_AWS_135,CKV_AWS_338
