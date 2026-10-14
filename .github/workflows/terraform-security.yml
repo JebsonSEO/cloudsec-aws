@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  terraform-security:
-    name: Validate and Scan Terraform
+  terraform-ci:
+    name: Mandatory Terraform CI
     runs-on: ubuntu-latest
 
     defaults:
@@ -41,6 +41,22 @@ jobs:
 
       - name: Validate Terraform configuration
         run: terraform validate
+
+  security-scan:
+    name: Checkov Security Scan
+    runs-on: ubuntu-latest
+
+    # Learning mode: security findings are reported but do not
+    # fail the overall workflow. Revisit this for production.
+    continue-on-error: true
+
+    defaults:
+      run:
+        working-directory: 03-terraform-secure-infrastructure
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
