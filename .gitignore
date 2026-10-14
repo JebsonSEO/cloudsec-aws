@@ -1,0 +1,25 @@
+# Terraform generated files
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+tfplan
+
+# Terraform variable files
+*.tfvars
+*.tfvars.json
+
+# Python virtual environments
+.venv/
+venv/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# OS and editor files
+.DS_Store
+.vscode/

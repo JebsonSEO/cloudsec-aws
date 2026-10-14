@@ -14,7 +14,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.cloudguard.id
   cidr_block              = var.public_subnet_cidr
   availability_zone       = var.availability_zone
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 
   tags = {
     Name        = "cloudguard-public-subnet"
@@ -75,15 +75,29 @@ resource "aws_security_group" "cloudguard_test" {
   vpc_id      = aws_vpc.cloudguard.id
 
   egress {
-    description = "Allow outbound IPv4 traffic for the lab"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "Allow outbound HTTPS for AWS service communication"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
     Name        = "cloudguard-test-sg"
+    Environment = "lab"
+    Project     = "CloudGuard"
+  }
+}
+
+# Restrict the VPC's default security group.
+resource "aws_default_security_group" "cloudguard_default" {
+  vpc_id = aws_vpc.cloudguard.id
+
+  ingress = []
+  egress  = []
+
+  tags = {
+    Name        = "cloudguard-default-sg"
     Environment = "lab"
     Project     = "CloudGuard"
   }
