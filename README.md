@@ -153,3 +153,22 @@ automated infrastructure workflow.
 
 Terraform, Checkov, AWS VPC, EC2, IAM, Systems Manager, VPC Flow Logs,
 CloudWatch Logs, AWS KMS, Git, and GitHub.
+
+### Security validation with Trivy
+
+Trivy is integrated into GitHub Actions to scan Terraform for security
+misconfigurations. The scanner is pinned to version 0.76.0, and the workflow
+fails when HIGH or CRITICAL findings are detected.
+
+The scan identified one unresolved CRITICAL finding:
+
+| Finding | Severity | Current decision |
+|---|---|---|
+| AWS-0104 | CRITICAL | Outbound TCP 443 permits connections to any IPv4 destination (`0.0.0.0/0`). Retained temporarily while evaluating safer alternatives. |
+
+**Risk:** The rule allows HTTPS connections to any IPv4 destination.
+Restricting destinations requires identifying necessary service endpoints
+and verifying that Systems Manager connectivity remains functional.
+
+This finding remains unresolved. Successful Terraform validation does not
+mean the security scan is clean.
