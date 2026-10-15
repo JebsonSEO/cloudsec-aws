@@ -18,6 +18,8 @@ jobs:
   terraform-ci:
     name: Mandatory Terraform CI
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     defaults:
       run:
@@ -45,6 +47,8 @@ jobs:
   security-scan:
     name: Checkov Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     defaults:
       run:
