@@ -83,3 +83,12 @@ jobs:
           path: 03-terraform-secure-infrastructure/checkov-report.json
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Scan Terraform with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: config
+          scan-ref: 03-terraform-secure-infrastructure
+          format: table
+          exit-code: '1'
+          severity: HIGH,CRITICAL
