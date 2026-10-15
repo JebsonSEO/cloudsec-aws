@@ -66,4 +66,16 @@ jobs:
         run: |
           checkov -d . \
             --framework terraform \
-            --soft-fail-on CKV_AWS_88,CKV_AWS_135,CKV_AWS_338
+            --soft-fail-on CKV_AWS_88,CKV_AWS_135,CKV_AWS_338 \
+            --output cli \
+            --output json \
+            --output-file-path console,checkov-report.json
+
+      - name: Upload Checkov report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudguard-checkov-report
+          path: 03-terraform-secure-infrastructure/checkov-report.json
+          if-no-files-found: warn
+          retention-days: 14
