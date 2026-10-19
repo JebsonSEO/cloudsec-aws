@@ -160,15 +160,56 @@ Trivy is integrated into GitHub Actions to scan Terraform for security
 misconfigurations. The scanner is pinned to version 0.76.0, and the workflow
 fails when HIGH or CRITICAL findings are detected.
 
-The scan identified one unresolved CRITICAL finding:
+#### Finding: AWS-0104 — Unrestricted Egress
 
-| Finding | Severity | Current decision |
-|---|---|---|
-| AWS-0104 | CRITICAL | Outbound TCP 443 permits connections to any IPv4 destination (`0.0.0.0/0`). Retained temporarily while evaluating safer alternatives. |
+**Severity:** CRITICAL
+**Status:** Remediated; required CI checks passed.
 
-**Risk:** The rule allows HTTPS connections to any IPv4 destination.
-Restricting destinations requires identifying necessary service endpoints
-and verifying that Systems Manager connectivity remains functional.
+Trivy identified a security group rule that permitted outbound TCP port 443
+connections to any IPv4 destination (`0.0.0.0/0`).
 
-This finding remains unresolved. Successful Terraform validation does not
-mean the security scan is clean.
+Although the rule restricted the protocol and port, it did not restrict
+the destination. This created broader outbound network access than the
+CloudGuard instance required.
+
+#### Remediation
+
+The unrestricted egress rule was removed and replaced with a standalone
+Terraform security-group egress rule.
+
+The updated configuration permits outbound TCP port 443 only to the
+CloudGuard Systems Manager VPC endpoint security group.
+
+Two interface VPC endpoints were configured:
+
+- `ssm`
+- `ssmmessages`
+
+Private DNS is enabled for both endpoints. The endpoint security group
+allows inbound TCP port 443 from the CloudGuard EC2 security group.
+
+#### Verification
+
+The remediation was verified through the following checks:
+
+- `terraform validate` completed successfully.
+- `terraform plan` reported no changes after the infrastructure was reconciled.
+- AWS CLI inspection confirmed that EC2 egress targets the endpoint security
+  group rather than `0.0.0.0/0`.
+- AWS CLI inspection confirmed that the endpoint security group permits
+  inbound TCP port 443 from the EC2 security group.
+- GitHub Actions passed all three checks on pull request #1, including
+  Checkov Security Scan and Mandatory Terraform CI.
+- The remediation was merged into `main`.
+
+These results confirm that the infrastructure configuration was updated
+and the configured CI checks passed. Successful CI checks alone do not
+prove that Systems Manager connectivity works end to end; that remains
+a separate verification task.
+
+#### Engineering lesson
+
+A restricted port does not necessarily mean restricted network access.
+Security-group rules should limit both the permitted traffic and its
+intended destinations. Automated security findings should be investigated
+and remediated rather than suppressed simply to obtain a passing build.
