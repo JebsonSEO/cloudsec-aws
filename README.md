@@ -162,7 +162,7 @@ fails when HIGH or CRITICAL findings are detected.
 
 #### Finding: AWS-0104 — Unrestricted Egress
 
-**Severity:** CRITICAL  
+**Severity:** CRITICAL
 **Status:** Remediated; required CI checks passed.
 
 Trivy identified a security group rule that permitted outbound TCP port 443
