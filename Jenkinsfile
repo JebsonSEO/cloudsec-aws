@@ -9,6 +9,7 @@ pipeline {
     environment {
         PROJECT_NAME = 'CloudGuard'
         TERRAFORM_DIR = '03-terraform-secure-infrastructure'
+        PATH = "/opt/checkov-venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     }
 
     stages {
