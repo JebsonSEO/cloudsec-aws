@@ -20,7 +20,7 @@ resource "aws_iam_role" "flow_logs" {
 # Destination for network traffic records.
 resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
   name              = "/cloudguard/vpc-flow-logs"
-  retention_in_days = 7
+  retention_in_days = 365
   kms_key_id        = aws_kms_key.cloudguard_flow_logs.arn
 
   tags = {
