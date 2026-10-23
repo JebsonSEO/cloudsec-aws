@@ -213,3 +213,65 @@ A restricted port does not necessarily mean restricted network access.
 Security-group rules should limit both the permitted traffic and its
 intended destinations. Automated security findings should be investigated
 and remediated rather than suppressed simply to obtain a passing build.
+
+## Jenkins: SCM-Integrated Terraform Security Pipeline
+
+I integrated Jenkins with the CloudGuard GitHub repository to run automated infrastructure validation and security scanning against version-controlled Terraform code.
+
+### Pipeline stages
+
+The `Jenkinsfile` defines these stages:
+
+1. **Source Checkout** : retrieves the project from GitHub and records the build and commit details.
+2. **Environment Check** : verifies that Git, Terraform, and Checkov are available.
+3. **Terraform Format Check** : checks Terraform formatting.
+4. **Terraform Initialization** : initializes the Terraform working directory using the committed dependency lock file.
+5. **Terraform Validation** : validates the Terraform configuration.
+6. **Checkov Security Scan** : scans the Terraform configuration for security misconfigurations.
+
+The pipeline uses timestamps, prevents concurrent builds of the same job, and reports success or failure through its post-build actions.
+
+### Troubleshooting Terraform initialization
+
+The initial Jenkins build failed during Terraform initialization because the machine could not establish an HTTPS connection to `registry.terraform.io`.
+
+Testing confirmed that general HTTPS connectivity worked, while connections to the Terraform Registry timed out.
+
+The AWS provider version `6.68.0` was already present in the Jenkins workspace. I configured a Terraform plugin cache for the Jenkins service account and successfully initialized the workspace using the previously installed provider.
+
+This resolved the initialization failure in the tested workspace. The solution should continue to be verified on fresh workspaces to ensure that provider availability is reproducible.
+
+### Security scan results
+
+The targeted Checkov tests produced the following results when the corresponding configuration settings were enabled:
+
+| Check | Requirement | Targeted test |
+|---|---|---|
+| CKV_AWS_135 | EC2 EBS optimization | Passed |
+| CKV_AWS_88 | EC2 instance should not have a public IP | Passed |
+| CKV_AWS_338 | CloudWatch log retention of at least one year | Passed |
+
+The current EC2 configuration still has two outstanding findings:
+
+- **CKV_AWS_135:** EBS optimization is disabled.
+- **CKV_AWS_88:** The instance is configured with a public IP address.
+
+Changing these settings caused Terraform to plan replacement of the existing EC2 instance. I reverted the temporary changes and did not apply that replacement.
+
+These findings remain open for a future infrastructure redesign. They have not been suppressed merely to produce a passing scan.
+
+### CloudWatch retention improvement
+
+The VPC Flow Logs retention period was increased from 7 days to 365 days.
+
+The change was applied successfully through Terraform and verified directly using the AWS CLI. Terraform reported one resource changed and no resources added or destroyed.
+
+The configuration change was merged into main  through pull request #12, with both required GitHub Actions checks passing.
+
+### Engineering lessons
+
+- A successful Terraform validation does not guarantee that security policies pass.
+- A successful Checkov scan does not prove that changes can be applied without infrastructure impact.
+- Provider caching can help when registry connectivity is unreliable, but fresh-workspace initialization must also be tested.
+- Security findings should be investigated and documented rather than hidden to obtain a green build.
+- CI/CD should validate infrastructure changes without automatically applying potentially destructive modifications.
