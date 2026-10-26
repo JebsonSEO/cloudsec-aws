@@ -30,6 +30,7 @@ pipeline {
                     git --version
                     terraform version
                     checkov --version
+                    ansible-playbook --version
                 '''
             }
         }
@@ -47,6 +48,31 @@ pipeline {
                 dir("${TERRAFORM_DIR}") {
                     sh 'terraform init -backend=false -input=false'
                 }
+            }
+        }
+
+        stage('Ansible Syntax Check') {
+            steps {
+                sh '''
+                    set -eu
+                    export ANSIBLE_ROLES_PATH="$WORKSPACE/02-cloudguard/ansible"
+                    ansible-playbook \
+                        02-cloudguard/ansible/Cloudguard_baseline/tests/test.yml \
+                        -i 02-cloudguard/ansible/Cloudguard_baseline/tests/inventory \
+                        --syntax-check
+                '''
+            }
+        }
+
+        stage('CloudGuard Ansible Baseline Audit') {
+            steps {
+                sh '''
+                    set -eu
+                    export ANSIBLE_ROLES_PATH="$WORKSPACE/02-cloudguard/ansible"
+                    ansible-playbook \
+                        02-cloudguard/ansible/Cloudguard_baseline/tests/test.yml \
+                        -i 02-cloudguard/ansible/Cloudguard_baseline/tests/inventory
+                '''
             }
         }
 
