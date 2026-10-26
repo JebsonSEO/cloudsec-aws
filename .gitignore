@@ -23,3 +23,10 @@ venv/
 # OS and editor files
 .DS_Store
 .vscode/
+
+# Ansible generated files
+*.retry
+__pycache__/
+
+# Ansible Vault files containing encrypted secrets
+vault-demo.yml
