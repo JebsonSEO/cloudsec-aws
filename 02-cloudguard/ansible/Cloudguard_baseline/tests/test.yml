@@ -1,0 +1,6 @@
+- name: Test CloudGuard Baseline Role
+  hosts: localhost
+  gather_facts: false
+
+  roles:
+    - Cloudguard_baseline

@@ -1,0 +1,8 @@
+# Default variables for the CloudGuard baseline role
+
+audit_name: "CloudGuard Security Audit"
+
+services_to_check:
+  - ssh.service
+  - cron.service
+  - systemd-resolved.service

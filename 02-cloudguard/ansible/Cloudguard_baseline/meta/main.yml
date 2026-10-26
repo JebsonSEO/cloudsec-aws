@@ -1,0 +1,12 @@
+galaxy_info:
+  author: "Jebson"
+  description: "Read-only Linux service auditing and security review reporting"
+  license: "MIT"
+  min_ansible_version: "2.20"
+  galaxy_tags:
+    - security
+    - linux
+    - audit
+    - monitoring
+
+dependencies: []

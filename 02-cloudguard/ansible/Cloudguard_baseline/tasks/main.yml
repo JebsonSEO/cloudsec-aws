@@ -1,0 +1,110 @@
+# CloudGuard baseline audit tasks
+
+- name: Validate services_to_check configuration
+  ansible.builtin.assert:
+    that:
+      - services_to_check is defined
+      - services_to_check is sequence
+      - services_to_check is not string
+      - services_to_check | length > 0
+      - services_to_check | select('string') | select('match', '\\S') | list | length == services_to_check | length
+    fail_msg: "services_to_check must be a non-empty list of service names."
+    success_msg: "Service audit configuration is valid."
+
+- name: Display audit name
+  ansible.builtin.debug:
+    msg: "Starting {{ audit_name }}"
+
+- name: Check system hostname
+  ansible.builtin.command: hostname
+  register: hostname_result
+  changed_when: false
+
+- name: Display system hostname
+  ansible.builtin.debug:
+    msg: "{{ audit_name }} running on {{ hostname_result.stdout }}"
+
+- name: Check multiple service states
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - "{{ item }}"
+      - "--property=LoadState,ActiveState,SubState"
+      - "--no-pager"
+  loop: "{{ services_to_check }}"
+  register: service_check_results
+  changed_when: false
+
+- name: Verify service audit commands succeeded
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - item.rc == 0
+    fail_msg: "Service audit command failed for {{ item.item }}: {{ item.stderr }}"
+    success_msg: "Service audit command succeeded for {{ item.item }}"
+  loop: "{{ service_check_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Report service states
+  ansible.builtin.debug:
+    msg:
+      - "Service: {{ item.item }}"
+      - "Load state: {{ (item.stdout_lines | select('match', '^LoadState=') | list | first | default('LoadState=unknown')) | split('=') | last }}"
+      - "Active state: {{ (item.stdout_lines | select('match', '^ActiveState=') | list | first | default('ActiveState=unknown')) | split('=') | last }}"
+      - "Substate: {{ (item.stdout_lines | select('match', '^SubState=') | list | first | default('SubState=unknown')) | split('=') | last }}"
+  loop: "{{ service_check_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Classify service states for security review
+  ansible.builtin.set_fact:
+    service_classifications: "{{ service_classifications | default([]) + [{'service': item.item, 'classification': classification | trim}] }}"
+  vars:
+    load_state: "{{ (item.stdout_lines | select('match', '^LoadState=') | list | first | default('LoadState=unknown')) | split('=') | last }}"
+    active_state: "{{ (item.stdout_lines | select('match', '^ActiveState=') | list | first | default('ActiveState=unknown')) | split('=') | last }}"
+    classification: >-
+      {% if load_state == 'not-found' %}
+      investigation_required
+      {% elif load_state != 'loaded' %}
+      investigation_required
+      {% elif active_state == 'active' %}
+      ok
+      {% elif active_state == 'inactive' %}
+      review
+      {% elif active_state == 'failed' %}
+      alert
+      {% else %}
+      investigation_required
+      {% endif %}
+  loop: "{{ service_check_results.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Report security classifications
+  ansible.builtin.debug:
+    msg: "{{ item.service }}: {{ item.classification | upper }}"
+  loop: "{{ service_classifications }}"
+  loop_control:
+    label: "{{ item.service }}"
+
+- name: Summarize security audit
+  ansible.builtin.debug:
+    msg:
+      - "Audit name: {{ audit_name }}"
+      - "Services checked: {{ service_classifications | length }}"
+      - >-
+        Services requiring review: {{
+          service_classifications
+          | rejectattr('classification', 'equalto', 'ok')
+          | list
+          | length
+        }}
+      - >-
+        Services classified as OK: {{
+          service_classifications
+          | selectattr('classification', 'equalto', 'ok')
+          | list
+          | length
+        }}
