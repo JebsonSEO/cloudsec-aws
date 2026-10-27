@@ -275,3 +275,22 @@ The configuration change was merged into main  through pull request #12, with bo
 - Provider caching can help when registry connectivity is unreliable, but fresh-workspace initialization must also be tested.
 - Security findings should be investigated and documented rather than hidden to obtain a green build.
 - CI/CD should validate infrastructure changes without automatically applying potentially destructive modifications.
+
+### Ansible Security Baseline Auditing
+
+CloudGuard uses Ansible to perform repeatable security baseline checks on a Linux host. The baseline role evaluates selected system services and checks explicitly configured SSH security directives against defined expectations.
+
+**Implemented capabilities**
+
+- **Service auditing:** Checks the operational states of selected system services, including SSH, cron and systemd-resolved.
+- **SSH configuration auditing:** Evaluates `PermitRootLogin`, `PasswordAuthentication`, `PermitEmptyPasswords` and `X11Forwarding` against a defined security baseline.
+- **Finding classification:** Classifies SSH settings as `OK`, `REVIEW` or `INVESTIGATION_REQUIRED`, depending on the observed configuration.
+- **Audit reporting:** Reports individual findings and summarises the number of settings that pass the baseline checks and those requiring further attention.
+- **Validation and testing:** Validates the Ansible role and tests the SSH classification logic against different configuration values.
+- **CI/CD integration:** Integrates the Ansible baseline audit into the existing Jenkins pipeline.
+
+**Current limitation**
+
+The SSH audit examines explicitly configured directives in `/etc/ssh/sshd_config`. It does not fully evaluate effective SSH settings, including configuration inheritance, included files and default values. Findings therefore require appropriate interpretation and further investigation where necessary.
+
+The role is designed for security auditing. Its current SSH audit reports findings without changing SSH security settings.
