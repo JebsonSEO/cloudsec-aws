@@ -294,3 +294,137 @@ CloudGuard uses Ansible to perform repeatable security baseline checks on a Linu
 The SSH audit examines explicitly configured directives in `/etc/ssh/sshd_config`. It does not fully evaluate effective SSH settings, including configuration inheritance, included files and default values. Findings therefore require appropriate interpretation and further investigation where necessary.
 
 The role is designed for security auditing. Its current SSH audit reports findings without changing SSH security settings.
+
+## Docker and Container Security
+
+### Overview
+
+As part of the CloudGuard learning journey, I built and tested Docker containers to understand how container configuration, image vulnerabilities, and runtime permissions affect application security.
+
+The lab compares a baseline Nginx container with an unprivileged container and a patched, hardened image. I used Trivy to scan images, updated vulnerable Alpine packages, applied runtime security controls, and verified application availability.
+
+### 1. Baseline Container Assessment
+
+I deployed the standard `nginx:alpine` image locally and exposed it through `127.0.0.1:8081`.
+
+The initial assessment established a baseline for comparing container security configurations.
+
+Identified weaknesses included:
+
+- The container's main process runs as root.
+- The container retains Docker's default capability set rather than dropping unnecessary capabilities explicitly.
+- The root filesystem is writable.
+- Explicit memory, CPU, and process-count limits were not configured.
+- Image scanning reported vulnerabilities requiring further investigation.
+
+The default Docker capability set is restricted compared with unrestricted host root privileges, but unnecessary capabilities can still increase the potential impact of a container compromise.
+
+### 2. Container Runtime Hardening
+
+I deployed an unprivileged Nginx image and applied the following controls:
+
+| Security control | Implementation | Purpose |
+|---|---|---|
+| Non-root execution | UID `101` | Reduces reliance on root privileges inside the container. |
+| Linux capabilities | `--cap-drop ALL` | Removes the container's Linux capabilities. |
+| Read-only root filesystem | `--read-only` | Prevents modifications to the container's root filesystem. |
+| Temporary writable storage | Restricted `tmpfs` mounts | Provides temporary writable paths required by Nginx. |
+| Memory limit | `256 MB` | Limits container memory consumption. |
+| CPU limit | `1.0` CPU | Restricts CPU allocation. |
+| Process limit | `100` processes | Limits process creation within the container. |
+| Localhost-only publishing | `127.0.0.1:8082:8080` | Prevents the published service from being bound to all host network interfaces. |
+
+### 3. Runtime Verification
+
+I verified the effective container configuration using Docker inspection and process status information.
+
+The hardened container ran as UID `101`, with all Linux capabilities dropped and a read-only root filesystem enabled. Memory, CPU, and process limits were also confirmed.
+
+The application returned HTTP `200 OK` through `127.0.0.1:8082`, demonstrating that the hardened configuration continued to serve HTTP requests.
+
+### 4. Vulnerability Scanning with Trivy
+
+I installed Trivy and used it to scan the baseline image, the original unprivileged image, and the patched image.
+
+| Image | Reported findings | Critical | High | Medium | Low | Unknown |
+|---|---:|---:|---:|---:|---:|---:|
+| `nginx:alpine` | 49 | 0 | 3 | 2 | 44 | 0 |
+| `nginxinc/nginx-unprivileged:stable-alpine` | 52 | 0 | 3 | 3 | 44 | 2 |
+| `nginx-unprivileged-hardened:1.0` | 0 | 0 | 0 | 0 | 0 | 0 |
+
+These are the findings reported by Trivy during the scans. They should not be interpreted as a count of unique vulnerabilities across all packages or as proof that an image contains no security weaknesses.
+
+### 5. Vulnerability Remediation
+
+The initial image scans identified vulnerable Alpine packages, including `brotli-libs`, `musl`, and `zlib`.
+
+I created a derived image that upgrades installed Alpine packages and returns to the unprivileged user:
+
+```dockerfile
+FROM nginxinc/nginx-unprivileged:stable-alpine
+
+USER root
+
+RUN apk upgrade --no-cache
+
+USER 101
+```
+
+I built the image as `nginx-unprivileged-hardened:1.0` and rescanned it with Trivy. The scan reported zero vulnerabilities at the time of testing.
+
+A clean scan is evidence of the result from that particular scan, not a guarantee that the image is vulnerability-free. Future scans are necessary as vulnerability intelligence and packages change.
+
+### 6. Hardened Image Deployment
+
+I deployed the patched image with the same principal runtime controls used for the hardened container:
+
+- Non-root execution as UID `101`.
+- All Linux capabilities dropped.
+- Read-only root filesystem.
+- Temporary writable filesystems for required runtime paths.
+- Memory, CPU, and process limits.
+- Port publishing restricted to the host's loopback interface.
+
+The deployed service returned HTTP `200 OK` through `127.0.0.1:8083`.
+
+The container logs also showed a warning about modifying `/etc/nginx/conf.d/default.conf` on a read-only filesystem. Although the application started successfully, this warning is documented for further investigation rather than treated as resolved.
+
+### 7. AppArmor and `no-new-privileges`
+
+I attempted to enable Docker's `no-new-privileges` security option. The container failed to start, and the host audit log recorded an AppArmor denial involving execution of `/docker-entrypoint.sh` and the `no new privs` setting.
+
+The container started successfully when I retried without that option.
+
+This identifies a host-level security compatibility issue to investigate further. The `no-new-privileges` control was not successfully enabled, and the current container configuration should not be described as having that protection.
+
+The appropriate next step is to investigate the interaction between the Snap-packaged Docker daemon, AppArmor, and the runtime configuration without disabling host security protections indiscriminately.
+
+### 8. Lessons Learned
+
+This exercise demonstrated that container security requires several complementary controls:
+
+- Running as a non-root user reduces the privileges available to the application.
+- Dropping unnecessary Linux capabilities reduces the container's effective privileges.
+- Read-only root filesystems limit filesystem modification.
+- Resource limits help constrain excessive CPU, memory, and process consumption.
+- Vulnerability scanning helps identify outdated or vulnerable packages.
+- Updating packages and rescanning provides a repeatable remediation process.
+- Runtime testing verifies that security controls do not prevent the application from serving legitimate requests.
+- Host security mechanisms and container runtime settings must be tested together.
+- A successful application response does not, by itself, prove that every security control is effective.
+
+### 9. Outstanding Improvements
+
+The following tasks remain open:
+
+1. Investigate the AppArmor denial associated with `no-new-privileges`.
+2. Determine how to enable and verify `no-new-privileges` safely in this environment.
+3. Investigate the Nginx read-only filesystem warning.
+4. Evaluate pinning base images by digest and establishing a repeatable image-update process.
+5. Integrate container image scanning into an automated CI pipeline.
+6. Add container configuration and supply-chain security checks.
+7. Repeat vulnerability scans periodically and document subsequent remediation.
+
+### Tools Used
+
+Docker, Nginx, Alpine Linux, Trivy, AppArmor, Linux capabilities, and the Linux process filesystem.

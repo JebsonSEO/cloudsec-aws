@@ -6,3 +6,10 @@ services_to_check:
   - ssh.service
   - cron.service
   - systemd-resolved.service
+
+# SSH security baseline expectations
+ssh_security_baseline:
+  permitrootlogin: "no"
+  passwordauthentication: "no"
+  permitemptypasswords: "no"
+  x11forwarding: "no"

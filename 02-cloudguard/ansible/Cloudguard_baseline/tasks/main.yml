@@ -108,3 +108,105 @@
           | list
           | length
         }}
+
+
+# SSH security configuration audit
+
+- name: Read SSH server configuration
+  ansible.builtin.slurp:
+    src: /etc/ssh/sshd_config
+  register: sshd_config_file
+
+- name: Extract explicitly configured SSH security directives
+  ansible.builtin.set_fact:
+    ssh_config_directives: >-
+      {{
+        (sshd_config_file.content | b64decode).splitlines()
+        | map('trim')
+        | reject('match', '^#')
+        | reject('equalto', '')
+        | select('match', '(?i)^(PermitRootLogin|PasswordAuthentication|PermitEmptyPasswords|X11Forwarding)\s+')
+        | map('regex_replace', '\s+', ' ')
+        | list
+      }}
+
+- name: Initialize SSH security audit results
+  ansible.builtin.set_fact:
+    ssh_security_results: []
+
+- name: Build SSH security audit results
+  ansible.builtin.set_fact:
+    ssh_security_results: >-
+      {{
+        ssh_security_results + [{
+          'directive': item.key,
+          'expected': item.value,
+          'actual': (
+            matching_directive
+            | regex_replace('(?i)^' ~ item.key ~ '\s+', '')
+            if matching_directive | length > 0
+            else 'not explicitly configured'
+          ),
+          'classification': (
+            'investigation_required'
+            if matching_directive | length == 0
+            else (
+              'ok'
+              if (
+                matching_directive
+                | regex_replace('(?i)^' ~ item.key ~ '\s+', '')
+                | lower
+              ) == (item.value | lower)
+              else 'review'
+            )
+          )
+        }]
+      }}
+  vars:
+    matching_directive: >-
+      {{
+        ssh_config_directives
+        | select('match', '(?i)^' ~ item.key ~ '\s+')
+        | list
+        | first
+        | default('')
+      }}
+  loop: "{{ ssh_security_baseline | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Report SSH security audit results
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.directive }}:
+      expected={{ item.expected }},
+      actual={{ item.actual }},
+      classification={{ item.classification | upper }}
+  loop: "{{ ssh_security_results }}"
+  loop_control:
+    label: "{{ item.directive }}"
+
+- name: Summarize SSH security audit
+  ansible.builtin.debug:
+    msg:
+      - "SSH directives checked: {{ ssh_security_results | length }}"
+      - >-
+        SSH settings requiring review or investigation:
+        {{
+          ssh_security_results
+          | rejectattr('classification', 'equalto', 'ok')
+          | list
+          | length
+        }}
+      - >-
+        SSH settings classified as OK:
+        {{
+          ssh_security_results
+          | selectattr('classification', 'equalto', 'ok')
+          | list
+          | length
+        }}
+      - >-
+        Limitation: this checks explicit directives in sshd_config only.
+        Included files, directive precedence, and SSH defaults are not
+        fully evaluated. No SSH settings were changed.
