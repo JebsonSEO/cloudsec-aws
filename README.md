@@ -428,3 +428,52 @@ The following tasks remain open:
 ### Tools Used
 
 Docker, Nginx, Alpine Linux, Trivy, AppArmor, Linux capabilities, and the Linux process filesystem.
+
+### Container Network Segmentation
+
+#### Objective
+Test how Docker user-defined bridge networks control direct communication between containers.
+
+#### Lab Environment
+
+Two separate user-defined bridge networks were created:
+
+| Network | Subnet | Test workload |
+|---|---|---|
+| `cloudguard-app-net` | `172.18.0.0/16` | `cloudguard-app-test` and `cloudguard-peer-test` |
+| `cloudguard-isolated-net` | `172.19.0.0/16` | `cloudguard-isolated-test` |
+
+The Nginx test service was published on `127.0.0.1:18080`, limiting its published host endpoint to the host's IPv4 loopback interface.
+
+#### Connectivity Tests
+
+| Source | Destination | Result |
+|---|---|---|
+| `cloudguard-peer-test` | `cloudguard-app-test` (`172.18.0.2:80`) | HTTP request succeeded; exit code `0` |
+| `cloudguard-isolated-test` | `cloudguard-app-test` (`172.18.0.2:80`) | Request timed out; exit code `1` |
+
+The successful test also demonstrated container-name DNS resolution on the same user-defined bridge network.
+
+The cross-network request failed, consistent with the separation of the two bridge networks. These tests establish the behavior of the tested endpoints and paths, not a guarantee that all possible paths between the networks or through the host are blocked.
+
+#### Security Findings
+
+- Containers sharing a user-defined bridge can communicate directly when the destination service is reachable.
+- Separate bridge networks provide network-level separation and restrict direct communication between workloads that do not share a network.
+- Network segmentation can reduce opportunities for lateral movement following a container compromise.
+- Publishing a service on `127.0.0.1` limits its published host endpoint; it does not prevent other containers sharing a bridge network from reaching the service through its container IP.
+- Containers can be attached to multiple networks, so network membership must be reviewed when assessing isolation.
+- Network segmentation should complement least privilege, container hardening, vulnerability management, and host security controls.
+
+#### Limitations
+
+The cross-network test produced a timeout rather than a definitive network-policy audit. The lab did not test every possible host-routing, published-port, or additional-network path. Further testing would be required before claiming comprehensive isolation.
+
+#### Tools Used
+
+- Docker Engine
+- Docker user-defined bridge networks
+- Nginx Alpine image
+- `docker network inspect`
+- `docker exec`
+- `wget`
