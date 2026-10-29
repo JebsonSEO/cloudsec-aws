@@ -477,3 +477,74 @@ The cross-network test produced a timeout rather than a definitive network-polic
 - `docker network inspect`
 - `docker exec`
 - `wget`
+
+### Container Secrets Management
+
+#### Objective
+Investigate secret exposure through container environment variables, compare environment variables with a read-only file mount, and examine Docker image-layer risks.
+
+#### Environment Variable Exposure
+
+A temporary container named `cloudguard-secret-env-lab` was created with a fictitious password supplied through the `DB_PASSWORD` environment variable.
+
+Docker inspection returned the configured variable and its value. This demonstrated that users with sufficient Docker daemon access can retrieve sensitive values from container configuration.
+
+No real credentials were used.
+
+#### Read-Only Secret File Mount
+
+A host-side test file was created with restrictive filesystem permissions:
+
+- Directory permissions: `700`
+- File permissions: `600`
+
+The file was mounted into `cloudguard-secret-file-lab` at `/run/secrets/db_password` using a read-only bind mount.
+
+Verification results:
+
+| Test | Result |
+|---|---|
+| Container could read the mounted file | Passed |
+| Container could write through the mount | Blocked |
+| Host file permissions | Verified as `600` |
+| Host directory permissions | Verified as `700` |
+
+The read-only mount prevented modification through that mount. It did not prevent the container from reading the secret or protect the file from a sufficiently privileged host user.
+
+This local bind-mount exercise is not equivalent to Docker Swarm secrets.
+
+#### Docker Image-Layer Investigation
+
+A harmless test image, `cloudguard-history-lab:1.0`, was built with two instructions:
+
+1. Create `/demo.txt`.
+2. Remove `/demo.txt` in a subsequent build step.
+
+The image history recorded both instructions. Running a container from the final image confirmed that `/demo.txt` was absent from the final filesystem.
+
+This demonstrates that image history and the final container filesystem provide different information. The lab did not extract an earlier layer or recover the deleted file's contents, so it does not establish that a recovery attack was completed.
+
+#### Security Findings
+
+- Avoid embedding credentials in Dockerfiles or image layers.
+- Deleting a secret in a later build instruction does not guarantee that its earlier contents are absent from the image.
+- Environment variables are convenient configuration mechanisms but can expose sensitive values through container inspection and other privileged access.
+- Read-only bind mounts restrict writes through the mount but do not provide encryption or protect against privileged host access.
+- Host filesystem permissions help restrict ordinary access but are not a substitute for a complete secrets-management solution.
+- Docker Swarm secrets are designed for Swarm services. Swarm was inactive during this lab, so Swarm secret delivery was not tested.
+- Secret-management controls must be assessed alongside Docker daemon access, host security, application behavior, and deployment configuration.
+
+#### Limitations
+
+The image-layer exercise demonstrated file creation and deletion across build instructions but did not recover data from an earlier layer.
+
+A bind mount from `/tmp` failed because Docker reported that its source path did not exist, while a test bind mount from the project directory succeeded. The cause of the difference was not established and remains unresolved.
+
+#### Tools Used
+
+- Docker Engine 29.8.0
+- Docker image history
+- Docker inspection
+- Read-only bind mounts
+- Alpine Linux
+- Linux filesystem permissions
