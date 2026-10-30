@@ -548,3 +548,118 @@ A bind mount from `/tmp` failed because Docker reported that its source path did
 - Read-only bind mounts
 - Alpine Linux
 - Linux filesystem permissions
+### Container Supply-Chain Security
+
+#### Objective
+
+Understand Docker image tags, image IDs, and repository digests; investigate tag mutability and digest-based image references; and examine image metadata and build history.
+
+#### Image Inventory
+
+The following locally available images were inspected using `docker image ls --digests`.
+
+| Repository | Tag | Image ID (short) | Reported digest (short) |
+|---|---|---|---|
+| `nginx-unprivileged-hardened` | `1.0` | `62293a4f94b0` | `62293a4f94b0` |
+| `nginx` | `alpine` | `a3554c0d0b48` | `a3554c0d0b48` |
+| `alpine` | `3.24` | `be2656061b53` | `be2656061b53` |
+| `nginxinc/nginx-unprivileged` | `stable-alpine` | `f5116ed4606f` | `f5116ed4606f` |
+
+These are observations from the local Docker environment during the lab, not universal relationships between image IDs and repository digests.
+
+#### Image Tags and Immutable Digests
+
+An image tag is a human-readable reference that can be reassigned to a different image.
+
+Example:
+
+`nginxinc/nginx-unprivileged:stable-alpine`
+
+The `stable-alpine` tag can point to a newer image when the publisher updates the release.
+
+A digest reference identifies specific manifest or image-index content using a cryptographic hash:
+
+`nginxinc/nginx-unprivileged@sha256:<digest>`
+
+Unlike a mutable tag, a digest reference identifies fixed content. Pinning an image to a verified digest improves deployment consistency and reduces the risk of unexpected image changes when a tag is updated.
+
+Digest pinning does not guarantee that an image is vulnerability-free or that its registry will retain the referenced content indefinitely.
+
+#### Image Inspection and Verification
+
+The base image was inspected using Docker image inspection.
+
+Recorded metadata included:
+
+| Property | Observed value |
+|---|---|
+| Image version label | `1.30.6-alpine` |
+| Image revision label | `bb7393196554e11f7ba95452856d8b5faff217bf` |
+| Operating system | Linux |
+| Architecture | AMD64 |
+| Source repository | `nginx/docker-nginx-unprivileged` |
+
+The hardened image, `nginx-unprivileged-hardened:1.0`, was also inspected.
+
+Its configuration reported:
+
+- Configured user: UID `101`
+- Exposed port: `8080/tcp`
+- Entrypoint: `/docker-entrypoint.sh`
+- Command: `nginx -g daemon off;`
+
+The image creation time was recorded as `2026-10-28T13:18:04.146300677+01:00`.
+
+#### Tag and Digest Resolution Test
+
+The base image was inspected through both its tag and its reported repository digest.
+
+Both references successfully resolved to the same local image configuration:
+
+`sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03`
+
+The reported image ID and repository digest had matching SHA-256 values in this environment. This observation should not be generalized: an image ID identifies an image configuration, while a repository digest identifies a manifest or image index.
+
+The test demonstrated successful local resolution through both references. It did not independently verify image signatures, publisher authenticity, or provenance.
+
+#### Image Build History Investigation
+
+The hardened image was examined using `docker history nginx-unprivileged-hardened:1.0`.
+
+The history showed the inherited NGINX image layers and additional build instructions from the hardening Dockerfile, including:
+
+```dockerfile
+USER root
+RUN apk upgrade --no-cache
+USER 101
+
+```
+### Security Findings
+
+- Mutable image tags can introduce unexpected image changes between deployments.
+- Digest pinning provides a more consistent way to identify the intended image content.
+- Image IDs and repository digests serve different purposes and should not be treated as interchangeable.
+- Image metadata labels provide useful information about declared versions, maintainers, and source repositories, but do not independently establish authenticity.
+- Docker image history can help investigate how an image was constructed.
+- Digest pinning does not replace vulnerability scanning, image provenance verification, signature verification, or runtime hardening.
+- Production image updates should be verified and tested before controlled deployment.
+- Security remediation should include post-deployment monitoring and documentation.
+
+### Limitations
+
+The exercise used locally available Docker images and metadata.
+
+The matching image ID and reported repository digest values were observed in this environment. Their equality was not established as a general Docker behaviour.
+
+The lab did not implement image signing, signature verification, software bill of materials (SBOM) generation, provenance attestation, or automated supply-chain policy enforcement.
+
+No production deployment or running container was modified during this exercise.
+
+### Tools Used
+
+- Docker Engine 29.8.0
+- Docker image inspection
+- Docker image history
+- Docker image tags and repository digest references
+- NGINX Unprivileged image
+- Linux and AMD64 architecture
