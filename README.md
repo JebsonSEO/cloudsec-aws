@@ -548,6 +548,8 @@ A bind mount from `/tmp` failed because Docker reported that its source path did
 - Read-only bind mounts
 - Alpine Linux
 - Linux filesystem permissions
+
+
 ### Container Supply-Chain Security
 
 #### Objective
@@ -742,3 +744,255 @@ No production deployment or running container was modified during this exercise.
 - Docker image tags and repository digest references
 - NGINX Unprivileged image
 - Linux and AMD64 architecture
+
+## Amazon ECR Security
+
+### Objective
+
+Extend CloudGuard's container security architecture by introducing a secure Amazon Elastic Container Registry (ECR) repository for storing application images.
+
+The objective is to protect container images against unauthorised modification, improve vulnerability visibility, encrypt stored images, and establish image-retention controls.
+
+### 1. Repository Configuration
+
+Terraform defines a private ECR repository named `cloudguard-app`.
+
+The following security controls were configured:
+
+| Security control | Implementation | Purpose |
+|---|---|---|
+| Repository privacy | Private ECR repository | Restricts image access to authorised identities. |
+| Tag immutability | Enabled | Prevents existing image tags from being overwritten. |
+| Image scanning | Scan on push | Initiates vulnerability scanning when images are pushed. |
+| Encryption at rest | Customer-managed AWS KMS key | Protects stored container images. |
+| Key rotation | Enabled | Supports periodic cryptographic key rotation. |
+| Image lifecycle | Lifecycle policy | Removes older untagged images and controls tagged-image retention. |
+
+### 2. KMS Encryption
+
+A dedicated customer-managed KMS key was configured for ECR image encryption.
+
+The key configuration includes:
+
+- Automatic key rotation.
+- A 30-day deletion waiting period.
+- A dedicated key alias: `alias/cloudguard-ecr`.
+- A documented key policy defining account-level administrative access.
+
+This separates ECR encryption management from the encryption configuration used by other CloudGuard services.
+
+### 3. Image Lifecycle Management
+
+An ECR lifecycle policy was configured to:
+
+- Expire untagged images after 14 days.
+- Retain the latest 10 images carrying the `v` tag prefix.
+
+This helps control registry storage consumption while retaining a limited history of versioned application images.
+
+### 4. Security Validation
+
+The ECR Terraform configuration was scanned using Checkov.
+
+| Check | Security requirement | Result |
+|---|---|---|
+| CKV_AWS_163 | ECR image scanning | Passed |
+| CKV_AWS_51 | ECR tag immutability | Passed |
+| CKV_AWS_136 | ECR encryption | Passed |
+
+The targeted ECR security checks passed. Terraform configuration validation was also successful.
+
+### 5. Deployment Status and Limitations
+
+The ECR repository configuration is defined in Terraform but has not yet been deployed as part of this ECR/ECS implementation.
+
+The AWS identity used during the lab did not have sufficient permission to inspect ECR repositories. Consequently, repository creation, image pushing, and AWS-side verification remain outstanding.
+
+The existing local image, `nginx-unprivileged-hardened:2.0`, is intended for the CloudGuard container deployment.
+
+A successful Terraform validation or Checkov scan confirms configuration-level checks, not the successful creation or operation of an AWS ECR repository.
+
+---
+
+## Amazon ECS Fargate Security
+
+### Objective
+
+Design a secure container deployment architecture using Amazon Elastic Container Service (ECS) with AWS Fargate.
+
+Fargate provides serverless container compute, removing the need to manage the underlying EC2 container hosts directly.
+
+The CloudGuard configuration uses private networking, separate IAM roles, restricted security groups, encrypted application logs, and hardened container settings.
+
+### 1. ECS Cluster and Task Definition
+
+Terraform defines an ECS cluster named `cloudguard-cluster` with Container Insights enabled.
+
+The task definition uses:
+
+| Property | Configuration |
+|---|---|
+| Task family | `cloudguard-api` |
+| Launch type | Fargate |
+| Network mode | `awsvpc` |
+| CPU | 256 |
+| Memory | 512 MiB |
+| Operating system | Linux |
+| Architecture | X86_64 |
+| Container | `cloudguard-api` |
+| Container port | 8080 |
+| Image tag | `2.0` |
+
+The task references the private CloudGuard ECR repository.
+
+### 2. IAM Role Separation
+
+Two separate IAM roles were configured to enforce separation of responsibilities.
+
+**Task Execution Role**
+
+The execution role, `cloudguard-ecs-execution-role`, is used by the ECS agent to perform infrastructure-level operations required to start the container.
+
+It is associated with the AWS-managed `AmazonECSTaskExecutionRolePolicy`.
+
+**Application Task Role**
+
+The application role, `cloudguard-ecs-task-role`, represents the permissions available to the application running inside the container.
+
+It is separate from the execution role and has no additional application permissions configured at this stage.
+
+This separation prevents application permissions from being unnecessarily combined with the permissions required to launch and manage the task.
+
+### 3. Container Runtime Hardening
+
+The ECS task definition incorporates several container security controls:
+
+| Security control | Configuration | Security objective |
+|---|---|---|
+| Non-root execution | UID `101` | Reduces application privileges. |
+| Read-only root filesystem | Enabled | Restricts filesystem modification. |
+| Privileged mode | Disabled | Prevents privileged container execution. |
+| Linux capabilities | Drop `ALL` | Removes unnecessary Linux capabilities. |
+| Temporary storage | Dedicated `/tmp` volume | Provides a writable location without making the root filesystem writable. |
+| Logging | CloudWatch Logs | Centralises application log collection. |
+
+The temporary volume is mounted at `/tmp` to support application runtime requirements.
+
+The compatibility of UID `101` with the mounted Fargate volume remains an outstanding runtime verification item.
+
+### 4. Private Network Architecture
+
+The ECS service is configured to run in the existing private subnet.
+
+The network configuration includes:
+
+- Private subnet placement.
+- Public IP assignment disabled.
+- A dedicated ECS task security group.
+- A separate VPC endpoint security group.
+- Restricted HTTPS communication to the required interface endpoints.
+- An S3 gateway endpoint for private access to S3-backed image layers.
+
+The following interface VPC endpoints are configured:
+
+- `ecr.api`
+- `ecr.dkr`
+- `logs`
+
+Private DNS is enabled for the interface endpoints.
+
+The ECS task security group permits HTTPS egress to the endpoint security group and the regional S3 prefix list. It does not contain unrestricted inbound access.
+
+This architecture is designed to allow private image retrieval and CloudWatch log delivery without requiring a NAT gateway.
+
+### 5. CloudWatch Logging and Encryption
+
+A dedicated CloudWatch log group was configured:
+
+`/ecs/cloudguard-api`
+
+The logging configuration includes:
+
+- 365-day retention.
+- Customer-managed KMS encryption.
+- A dedicated ECS log-encryption key.
+- Automatic KMS key rotation.
+- Container log delivery through the `awslogs` driver.
+
+The log group is provisioned separately so that the task definition does not need permission to create it dynamically.
+
+### 6. Deployment Safety
+
+The ECS service configuration includes:
+
+- Fargate launch type.
+- Private subnet placement.
+- Public IP assignment disabled.
+- Deployment circuit breaker enabled.
+- Automatic rollback enabled.
+
+The desired task count is currently set to `0`.
+
+This is intentional because the application image has not yet been pushed to the ECR repository. The service is therefore configured in Terraform but is not intended to launch application tasks at this stage.
+
+### 7. Security Validation
+
+The Terraform configuration was validated successfully.
+
+The targeted ECS and CloudWatch logging checks passed, including checks for:
+
+- Separate ECS execution and application task roles.
+- Restricted container privileges.
+- Read-only root filesystem.
+- CloudWatch log encryption.
+- CloudWatch log retention.
+
+The latest full-project Checkov scan reported:
+
+| Result | Checks |
+|---|---:|
+| Passed | 191 |
+| Failed | 2 |
+| Skipped with documented exceptions | 9 |
+
+The two outstanding failures relate to the existing EC2 lab instance:
+
+- `CKV_AWS_135`: EBS optimization is disabled.
+- `CKV_AWS_88`: The EC2 instance has a public IP address.
+
+These findings predate the ECR and ECS additions and remain documented for future remediation.
+
+The skipped checks include documented KMS policy exceptions. They are not passing checks.
+
+### 8. Deployment Status and Outstanding Work
+
+The ECR and ECS infrastructure has been defined and validated locally through Terraform and Checkov.
+
+However, the following activities remain outstanding:
+
+1. Deploy the ECR repository and associated KMS resources.
+2. Build and push the CloudGuard application image to ECR.
+3. Verify image scanning and repository encryption in AWS.
+4. Deploy the ECS Fargate service.
+5. Verify task startup and private ECR image retrieval.
+6. Confirm that UID `101` can use the mounted temporary volume.
+7. Verify CloudWatch log delivery and encryption.
+8. Perform runtime security testing and confirm the deployment rollback behaviour.
+9. Complete the remaining EC2 Checkov remediations.
+
+The AWS identity currently available to the lab has restricted permissions, so these activities will require the appropriate authorised access before deployment and AWS-side verification.
+
+### Engineering Lessons
+
+- Container security extends beyond hardening the image itself.
+- Image immutability helps prevent unexpected changes to deployed artifacts.
+- KMS encryption protects stored container images and application logs.
+- Execution roles and application task roles should have separate responsibilities.
+- Private networking reduces unnecessary exposure of application workloads.
+- VPC endpoints can provide private access to AWS services without requiring a NAT gateway.
+- Infrastructure validation and security scanning do not replace runtime verification.
+- A deployment should not be described as production-ready until its security controls have been tested in the running environment.
+
+### Tools and Services Used
+
+Terraform, Checkov, Amazon ECR, Amazon ECS, AWS Fargate, AWS IAM, AWS KMS, Amazon VPC, VPC Endpoints, Amazon CloudWatch Logs, Docker, NGINX, and Git.
