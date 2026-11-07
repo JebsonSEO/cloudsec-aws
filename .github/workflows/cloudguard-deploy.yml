@@ -82,7 +82,7 @@ jobs:
 
       - name: Build CloudGuard image
         env:
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           docker build \
             --pull \
