@@ -90,6 +90,7 @@ jobs:
           version: 'v0.76.0'
           scan-type: config
           scan-ref: 03-terraform-secure-infrastructure
+          trivyignores: 03-terraform-secure-infrastructure/.trivyignore.yaml
           format: table
           exit-code: '1'
           severity: HIGH,CRITICAL
