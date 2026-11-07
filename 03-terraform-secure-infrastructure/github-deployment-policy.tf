@@ -58,7 +58,7 @@ data "aws_iam_policy_document" "github_deployment" {
     ]
 
     resources = [
-      aws_ecs_service.cloudguard.arn
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/cloudguard-cluster/cloudguard-api-service"
     ]
   }
 
@@ -69,7 +69,7 @@ data "aws_iam_policy_document" "github_deployment" {
     actions = ["ecs:DescribeClusters"]
 
     resources = [
-      aws_ecs_cluster.cloudguard.arn
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:cluster/cloudguard-cluster"
     ]
   }
 

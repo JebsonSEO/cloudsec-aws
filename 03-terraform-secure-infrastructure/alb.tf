@@ -14,6 +14,8 @@ resource "aws_security_group" "alb" {
 # Allow public HTTP traffic to the ALB.
 # Temporary lab configuration pending domain and HTTPS certificate.
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
+  #checkov:skip=CKV_AWS_260:Public HTTP is temporarily required for this certificate-free portfolio lab; production deployment will restrict access to HTTPS.
+
   security_group_id = aws_security_group.alb.id
 
   cidr_ipv4   = "0.0.0.0/0"
@@ -50,6 +52,8 @@ resource "aws_vpc_security_group_ingress_rule" "ecs_from_alb" {
 
 # CloudGuard Application Load Balancer.
 resource "aws_lb" "cloudguard" {
+  #checkov:skip=CKV2_AWS_20:HTTP-to-HTTPS redirection requires an HTTPS listener; this lab currently has no domain or ACM certificate.
+
   name                       = "cloudguard-public-alb"
   internal                   = false
   load_balancer_type         = "application"
@@ -63,15 +67,27 @@ resource "aws_lb" "cloudguard" {
 
   enable_deletion_protection = true
 
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    prefix  = "cloudguard"
+    enabled = true
+  }
+
   tags = {
     Name        = "cloudguard-public-alb"
     Project     = "CloudGuard"
     Environment = "lab"
   }
+
+  depends_on = [
+    aws_s3_bucket_policy.alb_logs
+  ]
 }
 
 # Target group for private ECS Fargate tasks.
 resource "aws_lb_target_group" "cloudguard" {
+  #checkov:skip=CKV_AWS_378:HTTP is used between the ALB and private ECS tasks within the VPC; backend TLS is outside this lab's current architecture.
+
   name        = "cloudguard-api-tg"
   port        = 8080
   protocol    = "HTTP"
@@ -99,6 +115,9 @@ resource "aws_lb_target_group" "cloudguard" {
 
 # HTTP listener for temporary lab access.
 resource "aws_lb_listener" "cloudguard_http" {
+  #checkov:skip=CKV_AWS_2:HTTPS listener requires a domain and ACM certificate, neither of which is configured for this lab.
+  #checkov:skip=CKV_AWS_103:TLS security policy applies to HTTPS listeners; HTTPS configuration is deferred to production.
+
   load_balancer_arn = aws_lb.cloudguard.arn
   port              = 80
   protocol          = "HTTP"

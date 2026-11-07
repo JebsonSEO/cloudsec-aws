@@ -2,7 +2,7 @@ resource "aws_ecs_service" "cloudguard" {
   name            = "cloudguard-api-service"
   cluster         = aws_ecs_cluster.cloudguard.id
   task_definition = aws_ecs_task_definition.cloudguard.arn
-  desired_count   = 0
+  desired_count   = 1
   launch_type     = "FARGATE"
 
   platform_version = "LATEST"
