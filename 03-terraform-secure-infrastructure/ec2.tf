@@ -1,5 +1,8 @@
 # CloudGuard lab instance, managed through Systems Manager.
 resource "aws_instance" "cloudguard_lab" {
+  #checkov:skip=CKV_AWS_135:Existing lab instance is retained to avoid forced replacement.
+  #checkov:skip=CKV_AWS_88:Public IP is temporarily retained for current lab access.
+
   ami           = "ami-01e082ac2f79f3918"
   instance_type = "t3.micro"
   # Enable detailed CloudWatch monitoring.

@@ -37,6 +37,33 @@ resource "aws_subnet" "private" {
   }
 }
 
+resource "aws_subnet" "public_b" {
+  vpc_id                  = aws_vpc.cloudguard.id
+  cidr_block              = var.public_subnet_b_cidr
+  availability_zone       = "eu-north-1b"
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name        = "cloudguard-public-subnet-b"
+    Environment = "lab"
+    Project     = "CloudGuard"
+    Tier        = "public"
+  }
+}
+
+resource "aws_subnet" "private_b" {
+  vpc_id            = aws_vpc.cloudguard.id
+  cidr_block        = var.private_subnet_b_cidr
+  availability_zone = "eu-north-1b"
+
+  tags = {
+    Name        = "cloudguard-private-subnet-b"
+    Environment = "lab"
+    Project     = "CloudGuard"
+    Tier        = "private"
+  }
+}
+
 resource "aws_internet_gateway" "cloudguard" {
   vpc_id = aws_vpc.cloudguard.id
 
@@ -66,6 +93,11 @@ resource "aws_route" "public_internet" {
 
 resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "public_b" {
+  subnet_id      = aws_subnet.public_b.id
   route_table_id = aws_route_table.public.id
 }
 

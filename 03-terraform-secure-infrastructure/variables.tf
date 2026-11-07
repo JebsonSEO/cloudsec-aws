@@ -27,3 +27,15 @@ variable "availability_zone" {
   type        = string
   default     = "eu-north-1a"
 }
+
+variable "public_subnet_b_cidr" {
+  description = "IPv4 CIDR block for the second public subnet"
+  type        = string
+  default     = "10.20.3.0/24"
+}
+
+variable "private_subnet_b_cidr" {
+  description = "IPv4 CIDR block for the second private subnet"
+  type        = string
+  default     = "10.20.4.0/24"
+}

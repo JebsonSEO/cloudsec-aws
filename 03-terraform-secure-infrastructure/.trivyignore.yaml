@@ -1,0 +1,18 @@
+misconfigurations:
+  - id: AWS-0132
+    paths:
+      - "alb-logging.tf"
+    statement: "ALB access-log delivery requires SSE-S3; SSE-KMS is unsupported."
+    expired_at: "2027-02-07T00:00:00Z"
+
+  - id: AWS-0053
+    paths:
+      - "alb.tf"
+    statement: "Public internet-facing ALB is intentional for the certificate-free CloudGuard portfolio lab."
+    expired_at: "2027-02-07T00:00:00Z"
+
+  - id: AWS-0054
+    paths:
+      - "alb.tf"
+    statement: "HTTP-only listener is temporary because no domain or ACM certificate is configured. HTTPS remains a production requirement."
+    expired_at: "2027-02-07T00:00:00Z"
