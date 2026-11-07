@@ -1,8 +1,8 @@
 resource "aws_s3_bucket" "alb_logs" {
- #checkov:skip=CKV_AWS_18:Dedicated server access logging bucket is outside this lab scope.
- #checkov:skip=CKV_AWS_145:ALB delivery bucket uses SSE-S3 encryption.
- #checkov:skip=CKV2_AWS_62:No event-processing workflow requires S3 notifications.
- #checkov:skip=CKV_AWS_144:Cross-region replication is unnecessary for this single-region lab.
+  #checkov:skip=CKV_AWS_18:Dedicated server access logging bucket is outside this lab scope.
+  #checkov:skip=CKV_AWS_145:ALB delivery bucket uses SSE-S3 encryption.
+  #checkov:skip=CKV2_AWS_62:No event-processing workflow requires S3 notifications.
+  #checkov:skip=CKV_AWS_144:Cross-region replication is unnecessary for this single-region lab.
 
   bucket        = "cloudguard-alb-logs-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
   force_destroy = false
