@@ -78,6 +78,7 @@ flowchart TB
     style CICD fill:#eaf2ff,stroke:#2563eb
     style AWS fill:#f0fdf4,stroke:#15803d
     style MONITORING fill:#fff7ed,stroke:#c2410c
+```
 
 ## 1. Network Architecture: VPC Segmentation
 
