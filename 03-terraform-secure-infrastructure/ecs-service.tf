@@ -5,6 +5,10 @@ resource "aws_ecs_service" "cloudguard" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+
   platform_version = "LATEST"
 
   network_configuration {
