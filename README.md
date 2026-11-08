@@ -4,6 +4,81 @@ Hands-on lab work covering network segmentation, least privilege IAM design, and
 recreated S3 misconfiguration breach. Built, broken, and fixed personally in a live
 AWS account.
 
+## CloudGuard: AWS Security Architecture
+
+CloudGuard combines secure AWS infrastructure, container security and automated deployment into a hands-on cloud security engineering project.
+
+The architecture illustrates the application deployment path, security boundaries, supporting AWS services and CI/CD workflow.
+
+```mermaid
+flowchart TB
+    DEV["Developer"] --> GH["GitHub Repository"]
+    GH --> GA["GitHub Actions"]
+
+    subgraph CICD["CI/CD and Supply Chain Security"]
+        GA --> OIDC["GitHub OIDC Authentication"]
+        OIDC --> ROLE["Scoped AWS Deployment Role"]
+        GA --> BUILD["Docker Image Build"]
+        BUILD --> SCAN["Trivy HIGH / CRITICAL Scan"]
+        SCAN -->|Scan passes| ECR["Amazon ECR<br/>Immutable Image Tags"]
+    end
+
+    subgraph AWS["AWS Cloud - eu-north-1"]
+        subgraph VPC["CloudGuard VPC"]
+            subgraph PUBLIC["Public Subnets"]
+                ALB["Application Load Balancer"]
+            end
+
+            subgraph PRIVATE["Private Application Subnets"]
+                ECS["Amazon ECS Fargate"]
+                APP["CloudGuard API Container<br/>UID 101<br/>Read-only Root Filesystem"]
+                INIT["Initialization Container<br/>Prepares Temporary Volume"]
+                INIT -->|SUCCESS dependency| APP
+                ECS --> APP
+            end
+
+            ALB -->|HTTP port 8080| ECS
+
+            subgraph ENDPOINTS["Private VPC Endpoints"]
+                SSM["SSM"]
+                MSG["SSM Messages"]
+                ECRAPI["ECR API"]
+                ECRDKR["ECR Docker"]
+                LOGS["CloudWatch Logs"]
+                S3EP["S3"]
+            end
+
+            ECS -.-> ECRAPI
+            ECS -.-> ECRDKR
+            ECS -.-> LOGS
+            ECS -.-> SSM
+            ECS -.-> MSG
+            ECS -.-> S3EP
+        end
+
+        ECR --> ECS
+
+        IAMEXEC["ECS Execution Role"] -.-> ECS
+        IAMTASK["Application Task Role"] -.-> APP
+
+        CW["CloudWatch Log Group<br/>365-day retention"]
+        KMS["Customer-managed KMS encryption"]
+
+        LOGS --> CW
+        KMS -.-> CW
+        KMS -.-> ECR
+    end
+
+    subgraph MONITORING["Security Monitoring Work"]
+        CT["AWS CloudTrail"]
+        WAZUH["Wazuh"]
+        CT -.->|Integration and validation work| WAZUH
+    end
+
+    style CICD fill:#eaf2ff,stroke:#2563eb
+    style AWS fill:#f0fdf4,stroke:#15803d
+    style MONITORING fill:#fff7ed,stroke:#c2410c
+
 ## 1. Network Architecture: VPC Segmentation
 
 I designed and built a VPC with separate public and private subnets, so that a
