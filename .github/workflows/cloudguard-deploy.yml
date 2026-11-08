@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '04-container-security/**'
+      - '03-terraform-secure-infrastructure/cloudguard-containers.json'
       - '.github/workflows/cloudguard-deploy.yml'
 
   workflow_dispatch:
@@ -37,38 +38,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-
-      - name: Diagnose GitHub OIDC claims
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          TOKEN=$(curl -fsS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
-            | jq -r '.value')
-
-          export TOKEN
-
-          python3 - <<'PY'
-          import os, json, base64
-
-          token = os.environ["TOKEN"]
-          payload = token.split(".")[1]
-          payload += "=" * (-len(payload) % 4)
-
-          claims = json.loads(
-              base64.urlsafe_b64decode(payload)
-          )
-
-          print(json.dumps({
-              "iss": claims.get("iss"),
-              "aud": claims.get("aud"),
-              "sub": claims.get("sub")
-          }, indent=2))
-          PY
-
-          unset TOKEN
 
       - name: Configure AWS credentials through OIDC
         uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
@@ -118,34 +87,83 @@ jobs:
 
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
-      - name: Retrieve current ECS task definition
+      - name: Build and validate ECS task definition
+        shell: bash
         run: |
-          aws ecs describe-task-definition \
-            --task-definition "$TASK_FAMILY" \
-            --region "$AWS_REGION" \
-            --query taskDefinition \
-            > task-definition.json
+          set -euo pipefail
 
-      - name: Render updated task definition
-        run: |
-          jq --arg IMAGE "$IMAGE_URI" --arg NAME "$CONTAINER_NAME" '
-            (.containerDefinitions[] | select(.name == $NAME).image) = $IMAGE
-            |
-            del(
-              .taskDefinitionArn,
-              .revision,
-              .status,
-              .requiresAttributes,
-              .compatibilities,
-              .registeredAt,
-              .registeredBy
+          TEMPLATE="03-terraform-secure-infrastructure/cloudguard-containers.json"
+
+          jq --arg IMAGE "$IMAGE_URI" --arg REGION "$AWS_REGION" '
+            map(
+              .image = $IMAGE
+              | if .name == "cloudguard-api" then
+                  .logConfiguration.options["awslogs-region"] = $REGION
+                else .
+                end
             )
-          ' task-definition.json > task-definition-register.json
+          ' "$TEMPLATE" > container-definitions.json
 
-          jq -e \
-            --arg NAME "$CONTAINER_NAME" \
-            '.containerDefinitions[] | select(.name == $NAME)' \
-            task-definition-register.json > /dev/null
+          # Validate container count and security configuration.
+          jq -e '
+            length == 2
+            and ([.[].name] | sort == ["cloudguard-api", "cloudguard-init-tmp"])
+            and (any(.[]; .name == "cloudguard-init-tmp" and .user == "0" and .essential == false))
+            and (any(.[]; .name == "cloudguard-api"
+              and .user == "101"
+              and .essential == true
+              and .readonlyRootFilesystem == true
+              and .privileged == false
+              and (.linuxParameters.capabilities.drop | index("ALL") != null)
+              and (.dependsOn | any(.containerName == "cloudguard-init-tmp" and .condition == "SUCCESS"))
+              and (.portMappings | any(.containerPort == 8080))
+            ))
+          ' container-definitions.json
+
+          # Build a complete Fargate task definition.
+          jq -n \
+            --arg family "$TASK_FAMILY" \
+            --arg executionRole "arn:aws:iam::${AWS_ACCOUNT_ID}:role/cloudguard-ecs-execution-role" \
+            --arg taskRole "arn:aws:iam::${AWS_ACCOUNT_ID}:role/cloudguard-ecs-task-role" \
+            --slurpfile containers container-definitions.json \
+            '{
+              family: $family,
+              requiresCompatibilities: ["FARGATE"],
+              networkMode: "awsvpc",
+              cpu: "256",
+              memory: "512",
+              executionRoleArn: $executionRole,
+              taskRoleArn: $taskRole,
+              runtimePlatform: {
+                operatingSystemFamily: "LINUX",
+                cpuArchitecture: "X86_64"
+              },
+              volumes: [
+                {
+                  name: "nginx-tmp"
+                }
+              ],
+              containerDefinitions: $containers[0],
+              tags: [
+                {
+                  key: "Project",
+                  value: "CloudGuard"
+                },
+                {
+                  key: "Environment",
+                  value: "lab"
+                }
+              ]
+            }' > task-definition-register.json
+
+          jq -e '
+            .family == "cloudguard-api"
+            and .networkMode == "awsvpc"
+            and (.containerDefinitions | length == 2)
+            and (.volumes | any(.name == "nginx-tmp"))
+          ' task-definition-register.json
+
+          echo "Complete ECS task definition generated and validated."
 
       - name: Register new ECS task definition revision
         run: |

@@ -1,0 +1,60 @@
+[
+  {
+    "name": "cloudguard-init-tmp",
+    "image": "__IMAGE_URI__",
+    "essential": false,
+    "user": "0",
+    "entryPoint": ["/bin/sh", "-c"],
+    "command": ["chown 101:101 /tmp && chmod 700 /tmp"],
+    "readonlyRootFilesystem": true,
+    "privileged": false,
+    "mountPoints": [
+      {
+        "sourceVolume": "nginx-tmp",
+        "containerPath": "/tmp",
+        "readOnly": false
+      }
+    ]
+  },
+  {
+    "name": "cloudguard-api",
+    "image": "__IMAGE_URI__",
+    "essential": true,
+    "user": "101",
+    "privileged": false,
+    "readonlyRootFilesystem": true,
+    "dependsOn": [
+      {
+        "containerName": "cloudguard-init-tmp",
+        "condition": "SUCCESS"
+      }
+    ],
+    "portMappings": [
+      {
+        "containerPort": 8080,
+        "hostPort": 8080,
+        "protocol": "tcp"
+      }
+    ],
+    "linuxParameters": {
+      "capabilities": {
+        "drop": ["ALL"]
+      }
+    },
+    "mountPoints": [
+      {
+        "sourceVolume": "nginx-tmp",
+        "containerPath": "/tmp",
+        "readOnly": false
+      }
+    ],
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "/ecs/cloudguard-api",
+        "awslogs-region": "__AWS_REGION__",
+        "awslogs-stream-prefix": "ecs"
+      }
+    }
+  }
+]
