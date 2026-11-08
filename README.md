@@ -921,78 +921,107 @@ The logging configuration includes:
 
 The log group is provisioned separately so that the task definition does not need permission to create it dynamically.
 
-### 6. Deployment Safety
+### 6. Deployment Safety and Runtime Security
 
-The ECS service configuration includes:
+CloudGuard was deployed to Amazon ECS using AWS Fargate. The service runs in private subnets with public IP assignment disabled.
 
-- Fargate launch type.
-- Private subnet placement.
-- Public IP assignment disabled.
-- Deployment circuit breaker enabled.
-- Automatic rollback enabled.
+The ECS deployment configuration includes:
 
-The desired task count is currently set to `0`.
-
-This is intentional because the application image has not yet been pushed to the ECR repository. The service is therefore configured in Terraform but is not intended to launch application tasks at this stage.
-
-### 7. Security Validation
-
-The Terraform configuration was validated successfully.
-
-The targeted ECS and CloudWatch logging checks passed, including checks for:
-
+- Fargate launch type with a `256 CPU / 512 MiB` task allocation.
 - Separate ECS execution and application task roles.
-- Restricted container privileges.
-- Read-only root filesystem.
-- CloudWatch log encryption.
-- CloudWatch log retention.
+- Deployment circuit breaker with automatic rollback enabled.
+- Immutable Amazon ECR image tags.
+- CloudWatch container logging.
+- Private networking using VPC endpoints for AWS service access.
 
-The latest full-project Checkov scan reported:
+The application container runs as non-root UID `101`, uses a read-only root filesystem, and drops all Linux capabilities.
 
-| Result | Checks |
-|---|---:|
-| Passed | 191 |
-| Failed | 2 |
-| Skipped with documented exceptions | 9 |
+A dedicated writable temporary volume is mounted at `/tmp`. An initialization container prepares the volume permissions before the application starts. The application container depends on the initialization container completing successfully.
 
-The two outstanding failures relate to the existing EC2 lab instance:
+This preserves the container's restricted runtime configuration while allowing NGINX to use its required temporary directories.
 
-- `CKV_AWS_135`: EBS optimization is disabled.
-- `CKV_AWS_88`: The EC2 instance has a public IP address.
+### 7. Automated Container Deployment
 
-These findings predate the ECR and ECS additions and remain documented for future remediation.
+I implemented a GitHub Actions workflow to automate CloudGuard container deployment.
 
-The skipped checks include documented KMS policy exceptions. They are not passing checks.
+The workflow uses GitHub OIDC to authenticate with AWS, avoiding long-lived AWS access keys stored in GitHub repository secrets.
 
-### 8. Deployment Status and Outstanding Work
+#### Deployment pipeline
 
-The ECR and ECS infrastructure has been defined and validated locally through Terraform and Checkov.
+1. **Source checkout:** Retrieves the application and deployment configuration.
+2. **AWS authentication:** Assumes the authorised AWS deployment role through GitHub OIDC.
+3. **Docker build:** Builds the CloudGuard application image.
+4. **Trivy scan:** Scans the image for HIGH and CRITICAL vulnerabilities.
+5. **ECR publishing:** Pushes the scanned image to Amazon ECR using an immutable, commit-specific tag.
+6. **Task definition generation:** Builds and validates the complete ECS task definition from the version-controlled container configuration.
+7. **ECS deployment:** Registers the task definition and updates the ECS service.
+8. **Deployment verification:** Waits for the service to reach a stable state and verifies the deployment.
 
-However, the following activities remain outstanding:
+The workflow uses a scoped IAM deployment policy to permit the required ECS task-definition registration and tagging operations.
 
-1. Deploy the ECR repository and associated KMS resources.
-2. Build and push the CloudGuard application image to ECR.
-3. Verify image scanning and repository encryption in AWS.
-4. Deploy the ECS Fargate service.
-5. Verify task startup and private ECR image retrieval.
-6. Confirm that UID `101` can use the mounted temporary volume.
-7. Verify CloudWatch log delivery and encryption.
-8. Perform runtime security testing and confirm the deployment rollback behaviour.
-9. Complete the remaining EC2 Checkov remediations.
+### 8. Deployment Verification
 
-The AWS identity currently available to the lab has restricted permissions, so these activities will require the appropriate authorised access before deployment and AWS-side verification.
+The deployment was successfully completed through GitHub Actions.
+
+| Verification | Result |
+|---|---|
+| GitHub Actions deployment workflow | Passed |
+| Docker image build | Successful |
+| Trivy HIGH/CRITICAL scan gate | Passed |
+| ECR image publishing | Successful |
+| ECS task definition registration | Successful |
+| ECS service deployment | Stable |
+| Application container | Running |
+| Initialization container | Completed successfully, exit code `0` |
+| Application Load Balancer response | HTTP 200 |
+
+The deployed ECS task definition reached revision `5`. The ECS service reported one desired task and one running task, with no pending tasks.
+
+The application was tested through the Application Load Balancer and returned HTTP `200`.
+
+The container health status was reported as `UNKNOWN` because a container-level health check has not yet been configured. This is not the same as a failed health check.
+
+### 9. Engineering Challenge: ECS Container Initialization
+
+One important deployment failure occurred because NGINX could not create its temporary proxy directory:
+
+`nginx: [emerg] mkdir() "/tmp/proxy_temp" failed (13: Permission denied)`
+
+The application container ran as UID `101` with a read-only root filesystem and restricted Linux capabilities. However, the mounted temporary volume initially lacked the required ownership and permissions.
+
+I traced the issue to the task-definition deployment process. The earlier workflow updated the application image using the existing ECS task definition, resulting in the initialization container being omitted from the deployed revision.
+
+I corrected the deployment process to generate the complete task definition from a version-controlled JSON configuration.
+
+The initialization container now prepares the shared temporary volume with the appropriate ownership and permissions before the application starts.
+
+This resolved the startup issue and allowed the application container to run with its intended security restrictions.
+
+### 10. Current Security Scope and Future Improvements
+
+CloudGuard's core implementation is complete as a hands-on cloud security engineering project. It demonstrates infrastructure security, container hardening, vulnerability scanning, security automation and deployment verification.
+
+The following improvements remain valuable:
+
+- Configure HTTPS/TLS for the Application Load Balancer.
+- Add container-level health checks and strengthen runtime monitoring.
+- Expand application security testing.
+- Continue developing and validating CloudTrail and Wazuh detection coverage.
+- Review the two outstanding EC2 Checkov findings: `CKV_AWS_135` and `CKV_AWS_88`.
+- Further test deployment rollback and recovery scenarios.
+
+The remaining EC2 findings relate to EBS optimisation and public IP assignment. They are documented rather than hidden through scanner suppressions.
 
 ### Engineering Lessons
 
-- Container security extends beyond hardening the image itself.
-- Image immutability helps prevent unexpected changes to deployed artifacts.
-- KMS encryption protects stored container images and application logs.
-- Execution roles and application task roles should have separate responsibilities.
-- Private networking reduces unnecessary exposure of application workloads.
-- VPC endpoints can provide private access to AWS services without requiring a NAT gateway.
-- Infrastructure validation and security scanning do not replace runtime verification.
-- A deployment should not be described as production-ready until its security controls have been tested in the running environment.
+- Infrastructure as Code provides repeatability, but deployment behaviour must also be verified at runtime.
+- Least privilege applies to deployment identities as much as application identities.
+- Container hardening requires attention to filesystem permissions, writable volumes and process privileges.
+- Immutable image tags improve deployment traceability.
+- Automated vulnerability scanning helps prevent vulnerable images from progressing through the deployment pipeline.
+- A successful CI/CD run is useful evidence, but it does not replace runtime testing.
+- Troubleshooting deployment failures requires examining the application, container configuration, task definition, IAM permissions and deployment workflow together.
 
 ### Tools and Services Used
 
-Terraform, Checkov, Amazon ECR, Amazon ECS, AWS Fargate, AWS IAM, AWS KMS, Amazon VPC, VPC Endpoints, Amazon CloudWatch Logs, Docker, NGINX, and Git.
+AWS VPC, Amazon ECS, AWS Fargate, Amazon ECR, AWS IAM, GitHub OIDC, GitHub Actions, Terraform, Docker, NGINX, Trivy, Checkov, AWS KMS, CloudWatch Logs, Application Load Balancer and Git.
